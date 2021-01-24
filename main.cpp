@@ -9,32 +9,53 @@
 class SHA1Bruteforcer
 {
 public:
-	SHA1Bruteforcer(std::string hash, std::string salt = "", std::string input_file = "")
+	SHA1Bruteforcer(std::string hash, std::string salt = "", std::string dictionary = "")
 		: m_hash{hash}
 		, m_salt{salt}
-		, m_input_file{input_file}
-
+		, m_dictionary{dictionary}
 	{
 	}
 
-	void crack()
+	std::string crack()
 	{
-		if (m_input_file.empty())
+		if (m_dictionary.empty())
 		{
 			m_crack_sha1();
 		}
 		else
 		{
-			std::cout << "Not yet implemeted" << std::endl;
+			m_crack_dictionary_sha1();
+
+			if (!m_found_hash)
+			{
+				m_crack_sha1();
+			}
 		}
+
+		if (!m_found_hash)
+		{
+			// TODO throw
+		}
+
+		return m_result;
 	}
 
 private:
 	std::string m_hash;
 	std::string m_salt;
-	std::string m_input_file;
+	std::string m_dictionary;
+
 	std::string m_result;
 	bool m_found_hash = false;
+
+	bool m_compare_hash(std::string candidate)
+	{
+		SHA1 checksum;
+		checksum.update(candidate);
+		const std::string hash = checksum.final();
+
+		return m_hash.compare(hash);
+	}
 
 	void m_make_permutations(std::string input_str, std::string permutations, unsigned int last, unsigned int current)
 	{
@@ -48,11 +69,19 @@ private:
 			permutations[current] = i;
 			if (current == last)
 			{
-				SHA1 checksum;
-			    checksum.update(permutations);
-			    const std::string hash = checksum.final();
-
-				if (!m_hash.compare(hash))
+				if (!m_compare_hash(permutations))
+				{
+					std::cout << "The hash is: " << permutations <<  std::endl;
+					m_result = permutations;
+					m_found_hash = true;
+				}
+				else if (!m_compare_hash(permutations + m_salt))
+				{
+					std::cout << "The hash is: " << permutations <<  std::endl;
+					m_result = permutations;
+					m_found_hash = true;
+				}
+				else if (!m_compare_hash(m_salt + permutations))
 				{
 					std::cout << "The hash is: " << permutations <<  std::endl;
 					m_result = permutations;
@@ -69,15 +98,26 @@ private:
 	std::string m_make_allchar_string()
 	{
 		std::string allchar;
-		for (unsigned char i = 32; i < 127; i++)
+		for (unsigned char i = 48; i < 58; i++)
 		{
 			allchar.push_back(static_cast<char>(i));
 		}
 
+		for (unsigned char i = 65; i < 91; i++)
+		{
+			allchar.push_back(static_cast<char>(i));
+		}
+
+		for (unsigned char i = 97; i < 123; i++)
+		{
+			allchar.push_back(static_cast<char>(i));
+		}
+
+
 		return allchar;
 	}
 
-	std::string m_crack_sha1()
+	void m_crack_sha1()
 	{
 
 		std::string allchar = m_make_allchar_string();
@@ -99,8 +139,28 @@ private:
 		{
 			std::cerr << "Could not decrypt the hash." << std::endl; 
 		}
+	}
 
-		return " ";
+	void m_crack_dictionary_sha1()
+	{
+		std::ifstream dictstream(m_dictionary); //opens the file
+		if (!dictstream.is_open())
+		{
+			std::cerr << "Error while openning input file" << std::endl;
+			// TODO throw
+		}
+
+		std::string pass_row;
+		while(std::getline(dictstream, pass_row))
+		{
+			if (!m_compare_hash(pass_row))
+			{
+				std::cout << "The hash is: " << pass_row <<  std::endl;
+				m_result = pass_row;
+				m_found_hash = true;
+				break;
+			}
+		}
 	}
 };
 
@@ -142,6 +202,23 @@ std::optional<std::map<std::string, std::string>> parse_args(int argc, char** ar
 			continue;
 		}
 
+		if (arg == "-D" || arg == "--dictionary")
+		{
+			if (i == argc - 1 || argc < 3)
+			{
+				std::cerr << arg << " parameter requires a dictionary file" << std::endl;
+				return std::nullopt;
+			}
+
+			args["dictionary"] = argv[++i];
+			continue;
+		}
+
+		if (!args["hash"].empty())
+		{
+			return std::map<std::string, std::string>();
+		}
+
 		args["hash"] = arg;
 	}
 
@@ -164,8 +241,40 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	SHA1Bruteforcer sha_bf(args["hash"], args["salt"], args["input"]);	
-	sha_bf.crack();
+	if (!args["input"].empty())
+	{
+		if (!args["hash"].empty())
+		{
+			std::cerr << "Error - invalid argumet " << args["hash"] << std::endl;
+			return 1;
+		}
+
+		std::ifstream input(args["input"]); //opens the file
+		if (!input.is_open())
+		{
+			std::cerr << "Error while openning input file" << std::endl;
+			return 1;
+		}
+
+		std::string hash_row;
+		while(std::getline(input, hash_row))
+		{
+			std::cout << hash_row << std::endl;
+			SHA1Bruteforcer sha_bf(hash_row, args["salt"], args["dictionary"]);	
+			sha_bf.crack();
+		}
+
+		if (!input.eof()) //unexpected end of stream
+		{
+			std::cerr << "Error in input stream\n";
+			return 1;
+		}
+	}
+	else
+	{
+		SHA1Bruteforcer sha_bf(args["hash"], args["salt"], args["dictionary"]);	
+		sha_bf.crack();
+	}
 
 	return 0;
 }
