@@ -57,6 +57,28 @@ private:
 		return m_hash.compare(hash);
 	}
 
+	void compare_with_salt(std::string candidate)
+	{
+		if (!m_compare_hash(candidate))
+		{
+			std::cout << "The hash is: " << candidate <<  std::endl;
+			m_result = candidate;
+			m_found_hash = true;
+		}
+		else if (!m_compare_hash(candidate + m_salt))
+		{
+			std::cout << "The hash is: " << candidate <<  std::endl;
+			m_result = candidate;
+			m_found_hash = true;
+		}
+		else if (!m_compare_hash(m_salt + candidate))
+		{
+			std::cout << "The hash is: " << candidate <<  std::endl;
+			m_result = candidate;
+			m_found_hash = true;
+		}
+	}
+
 	void m_make_permutations(std::string input_str, std::string permutations, unsigned int last, unsigned int current)
 	{
 		if (m_found_hash)
@@ -69,24 +91,7 @@ private:
 			permutations[current] = i;
 			if (current == last)
 			{
-				if (!m_compare_hash(permutations))
-				{
-					std::cout << "The hash is: " << permutations <<  std::endl;
-					m_result = permutations;
-					m_found_hash = true;
-				}
-				else if (!m_compare_hash(permutations + m_salt))
-				{
-					std::cout << "The hash is: " << permutations <<  std::endl;
-					m_result = permutations;
-					m_found_hash = true;
-				}
-				else if (!m_compare_hash(m_salt + permutations))
-				{
-					std::cout << "The hash is: " << permutations <<  std::endl;
-					m_result = permutations;
-					m_found_hash = true;
-				}
+				compare_with_salt(permutations);
 			}
 			else
 			{
@@ -153,13 +158,7 @@ private:
 		std::string pass_row;
 		while(std::getline(dictstream, pass_row))
 		{
-			if (!m_compare_hash(pass_row))
-			{
-				std::cout << "The hash is: " << pass_row <<  std::endl;
-				m_result = pass_row;
-				m_found_hash = true;
-				break;
-			}
+			compare_with_salt(pass_row);
 		}
 	}
 };
