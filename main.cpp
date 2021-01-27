@@ -331,6 +331,8 @@ int main(int argc, char **argv)
 		{
 			// std::cout << hash_row << std::endl;
 
+			//TODO check hash format
+
 			try
 			{
 				SHA1Bruteforcer sha_bf(hash_row, args["salt"], args["dictionary"], current_count, hash_count);	
@@ -353,6 +355,8 @@ int main(int argc, char **argv)
 	}
 	else
 	{
+		//TODO check hash format
+
 		try
 		{
 			SHA1Bruteforcer sha_bf(args["hash"], args["salt"], args["dictionary"]);	
