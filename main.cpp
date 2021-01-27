@@ -274,6 +274,10 @@ std::optional<std::map<std::string, std::string>> parse_args(int argc, char** ar
 
 }
 
+bool check_hash_format(std::string hash)
+{
+	return (hash.size() == 40) && (hash.find_first_not_of("0123456789abcdefABCDEF", 2) == std::string::npos);
+}
 
 int main(int argc, char **argv)
 {
@@ -309,7 +313,12 @@ int main(int argc, char **argv)
 		std::string hash_row;
 		while(std::getline(input, hash_row))
 		{
-			//TODO check hash format
+			if(!check_hash_format(hash_row))
+			{
+				std::cerr << "ERROR: Invalid hash format." << std::endl;
+				return 1;
+			}
+			
 			hashes.push_back(hash_row);
 		}
 
@@ -321,7 +330,12 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		//TODO check hash format
+		if(!check_hash_format(args["hash"]))
+		{
+			std::cerr << "ERROR: Invalid hash format." << std::endl;
+			return 1;
+		}
+
 		hashes.push_back(args["hash"]);
 	}
 
