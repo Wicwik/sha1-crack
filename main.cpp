@@ -1,3 +1,8 @@
+/*
+	SHA-1 Brute force
+	implemented bruteforce, salt, dictionary, console writes and multithreading
+*/
+
 #include "sha1/sha1.hpp"
 #include <iostream>
 #include <vector>
@@ -14,7 +19,7 @@
 class SHA1Bruteforcer
 {
 public:
-	SHA1Bruteforcer(const std::vector<std::string>& hashes, std::string salt = "", std::string dictionary = "", std::string parallel = "")
+	SHA1Bruteforcer(const std::vector<std::string>& hashes, const std::string salt = "", const std::string dictionary = "", const std::string parallel = "")
 		: m_hashes{hashes}
 		, m_salt{salt}
 		, m_dictionary{dictionary}
@@ -22,13 +27,16 @@ public:
 	{
 	}
 
+	// public crack function
 	void crack()
 	{
 		m_totalpass = m_hashes.size();
 		m_todopass = m_totalpass;
 
+		// if parallel
 		if (!m_parallel.empty())
 		{
+			// if dictionary file was not specified, do parallel bruteforce
 			if (m_dictionary.empty())
 			{
 				std::cout << "INFO: Currently found " << m_passcount << "/" << m_totalpass << " passwords." << std::endl;
@@ -42,15 +50,33 @@ public:
 			}
 			else
 			{
+				// if was do dictionary guessing
+				std::vector<std::vector<std::string>::iterator> positions;
 				for (const auto& hash : m_hashes)
 				{
+					m_foundpass = false;
 					std::cout << "INFO: Currently found " << m_passcount << "/" << m_totalpass << " passwords." << std::endl;
 					std::cout << "INFO: Trying dictionary for " << hash << " search." << std::endl;
-					m_crack_dictionary_sha1(hash);
+					
+					// so we dont repeat already found passwords in normal bruteforce
+					if (m_crack_dictionary_sha1(hash))
+					{
+						positions.push_back(std::find(m_hashes.begin(), m_hashes.end(), hash));
+					}
 				}
 
+				// if are thre any passwords left
 				if (m_todopass > 0)
 				{
+					for (const auto& position : positions)
+					{
+						if (position != m_hashes.end())
+						{
+							// remove hashes, by previosly found positions
+							m_hashes.erase(position);
+						}
+					}
+
 					std::cout << "INFO: Dictionary search failed, switching to parallel brute force." << std::endl;
 					m_crack_sha1_parallel();
 
@@ -68,40 +94,72 @@ public:
 		}
 		else
 		{
-			for (const auto& hash : m_hashes)
+			// basically same stuff as parallel
+			if (m_dictionary.empty())
 			{
-				if (m_dictionary.empty())
+				for (const auto& hash : m_hashes)
 				{
 					std::cout << "INFO: Currently found " << m_passcount << "/" << m_totalpass << " passwords." << std::endl;
-					std::cout << "INFO: Going straight to permutation brute force." << std::endl;;
+					std::cout << "INFO: Going straight to permutation brute force." << std::endl;
 					m_crack_sha1(hash);
-				}
-				else
-				{
-					std::cout << "INFO: Currently found " << m_passcount << "/" << m_totalpass << " passwords." << std::endl;
-					std::cout << "INFO: Trying dictionary for " << hash << " search." << std::endl;
-					m_crack_dictionary_sha1(hash);
 
 					if (!m_foundpass)
 					{
-						std::cout << "INFO: Dictionary search failed, switching to permutation brute force." << std::endl;
-						m_crack_sha1(hash);
+						throw std::logic_error( "ERROR: Hash not found." );
+					}
+					else
+					{
+						m_foundpass = false;
+					}
+				}
+			}
+			else
+			{
+				std::vector<std::vector<std::string>::iterator> positions;
+				for (const auto& hash : m_hashes)
+				{
+					m_foundpass = false;
+					std::cout << "INFO: Currently found " << m_passcount << "/" << m_totalpass << " passwords." << std::endl;
+					std::cout << "INFO: Trying dictionary for " << hash << " search." << std::endl;
+
+					if (m_crack_dictionary_sha1(hash))
+					{
+						positions.push_back(std::find(m_hashes.begin(), m_hashes.end(), hash));
 					}
 				}
 
-				if (!m_foundpass)
+				if (m_todopass > 0)
 				{
-					throw std::logic_error( "ERROR: Hash not found." );
-				}
-				else
-				{
-					m_foundpass = false;
+					for (const auto& position : positions)
+					{
+						if (position != m_hashes.end())
+						{
+							m_hashes.erase(position);
+						}
+					}
+
+					for (const auto& hash : m_hashes)
+					{
+						std::cout << "INFO: Dictionary search failed, switching to permutation brute force." << std::endl;
+						std::cout << "INFO: Currently found " << m_passcount << "/" << m_totalpass << " passwords." << std::endl;
+						m_crack_sha1(hash);
+
+						if (!m_foundpass)
+						{
+							throw std::logic_error( "ERROR: Hash not found." );
+						}
+						else
+						{
+							m_foundpass = false;
+						}
+					}
 				}
 			}
 		}
 	}
 
 private:
+	// arguments
 	std::vector<std::string> m_hashes;
 	std::string m_salt;
 	std::string m_dictionary;
@@ -112,15 +170,18 @@ private:
 	uint64_t m_hash_count = 0;
 	uint64_t m_hashrate = 0;
 
+	// atomic variables for parallel count
 	std::atomic<size_t> m_passcount = 0;
 	std::atomic<int> m_todopass;
 	size_t m_totalpass;
 
+	//. we store asyncs in futures to wait for them later 
 	std::vector<std::future<void>> m_futures;
 
-
+	// simple info pint
 	void m_print_info(std::string current)
 	{
+		// we use output string streams to keep the output whole and pretty
 		std::ostringstream out;
 		out << "INFO: Currently found " << m_passcount << "/" << m_totalpass << " passwords." << '\n';
 		out << "Current hashrate is around " << m_hashrate << " hash per second." << '\n';
@@ -128,22 +189,19 @@ private:
 		std::cout << out.str();
 	}
 
+	// calculate sha1 from candidate and compare it with input hash
 	bool m_compare_hash(std::string candidate, std::string hash)
 	{
 		SHA1 checksum;
 		checksum.update(candidate);
 		const std::string cand_hash = checksum.final();
 
-		m_hash_count++;
-
-		if (m_hashrate && (m_hash_count%(m_hashrate*7) == 0))
-		{
-			m_print_info(candidate);
-		}
+		m_hash_count++; // keep track of calculated hashes
 
 		return hash.compare(cand_hash);
 	}
 
+	// compare with salt before after and with no salt
 	void compare_with_salt(std::string candidate, std::string hash)
 	{
 		if (!m_compare_hash(candidate, hash))
@@ -168,8 +226,14 @@ private:
 			m_foundpass = true;
 			std::cout << "SUCESS: Found password number " << m_passcount << "/" << m_totalpass << " - " << hash << " => " << candidate <<  std::endl;
 		}
-	}
 
+		// about every 6 seconds print information
+		if (m_hashrate && (m_hash_count%(m_hashrate*6) == 0))
+		{
+			m_print_info(candidate);
+		}
+	}
+	// permutations for sequential version
 	void m_make_permutations(std::string input_str, std::string permutations, unsigned int last, unsigned int current, std::string hash)
 	{
 		if (m_foundpass)
@@ -178,20 +242,21 @@ private:
 		}
 
 		
-		for (const auto& letter : input_str)
+		for (const auto& letter : input_str) // for each allowed character
 		{
 			permutations[current] = letter;
-			if (current == last)
+			if (current == last) // if we recursively came to last character
 			{
-				compare_with_salt(permutations, hash);
+				compare_with_salt(permutations, hash); // check if its equal
 			}
 			else
 			{
-				m_make_permutations(input_str, permutations, last, current+1, hash);
+				m_make_permutations(input_str, permutations, last, current+1, hash); // next length
 			}
 		}
 	}
 
+	// create string from all allowerd characters 
 	std::string m_make_allchar_string()
 	{
 		std::string allchar;
@@ -219,17 +284,19 @@ private:
 
 		std::string allchar = m_make_allchar_string();
 
+		// for every pass length
 		for (unsigned int i = 0; i < 32; i++)
 		{
 			std::string permutations;
 			permutations.resize(i+1);
 
+			// clock for hashrate
 			auto start = std::chrono::high_resolution_clock::now();
 			m_make_permutations(allchar, permutations, i, 0, hash);
 			auto finish = std::chrono::high_resolution_clock::now();
 
 			std::chrono::duration<double> elapsed = finish - start;
-			m_hashrate = m_hash_count/elapsed.count();
+			m_hashrate = m_hash_count/elapsed.count(); // calculate hashrate after every length
 
 			if (m_foundpass)
 			{
@@ -238,7 +305,8 @@ private:
 		}
 	}
 
-	void m_crack_dictionary_sha1(std::string hash)
+	// check for every item in dictionary
+	bool m_crack_dictionary_sha1(std::string hash)
 	{
 		std::ifstream dictstream(m_dictionary); //opens the file
 		if (!dictstream.is_open())
@@ -261,8 +329,11 @@ private:
 		{
 			throw std::runtime_error( "ERROR: A mistake in dictionary input stream." );
 		}
+
+		return m_foundpass;
 	}
 
+	// get next possible password, from allowed range
 	bool m_next_pass_parallel(std::string& password, size_t start)
 	{
 		size_t len =  password.size();
@@ -296,7 +367,7 @@ private:
 
 	void m_crack_sha1_parallel(char c, size_t n)
 	{
-		std::string password(n, '0');
+		std::string password(n, '0'); // create password from begining characters
 		password[0] = c;
 
 		while(m_todopass > 0)
@@ -310,7 +381,7 @@ private:
 				if (!m_compare_hash(password, hash))
 				{
 					m_passcount++;
-					m_todopass--;
+					m_todopass--; // decremets passwords left
 
 					std::ostringstream out;
 					out << "SUCESS: Found password number " << m_passcount << "/" << m_totalpass << " - " << hash << " => " << password << '\n';
@@ -339,6 +410,11 @@ private:
 					std::cout << out.str();
 					continue;
 				}
+
+				if (m_hashrate && (m_hash_count%(m_hashrate*7) == 0))
+				{
+					m_print_info(password);
+				}
 			}
 
 			if (!m_next_pass_parallel(password, 1))
@@ -352,12 +428,14 @@ private:
 	{
 		std::string allchar = m_make_allchar_string();
 
+		// for every pass length
 		for (size_t i = 1 ; i <= 32; i++)
 		{
+			// clock for hashrate
 			auto start = std::chrono::high_resolution_clock::now();
 			for (const auto& c : allchar)
 			{
-				m_futures.push_back(std::async(std::launch::async, [&, c, i]() { m_crack_sha1_parallel(c, i); }));
+				m_futures.push_back(std::async(std::launch::async, [&, c, i]() { m_crack_sha1_parallel(c, i); })); // multithreading by asinc
 			}
 
 			for (const auto& fut : m_futures)
@@ -377,6 +455,7 @@ private:
 	}
 };
 
+// parse argumets to map
 std::optional<std::map<std::string, std::string>> parse_args(int argc, char** argv)
 {
 	std::map<std::string, std::string> args;
@@ -393,6 +472,12 @@ std::optional<std::map<std::string, std::string>> parse_args(int argc, char** ar
 
 		if (arg == "-S" || arg == "--salt")
 		{
+			if (!args["salt"].empty())
+			{
+				std::cerr << "ERROR: doubled parameter " << arg << "." << std::endl;
+				return std::nullopt;
+			}
+
 			if (i == argc - 1 || argc < 3)
 			{
 				std::cerr << "ERROR: " << arg << " parameter requires a salt." << std::endl;
@@ -405,6 +490,12 @@ std::optional<std::map<std::string, std::string>> parse_args(int argc, char** ar
 
 		if (arg == "-I" || arg == "--input")
 		{
+			if (!args["input"].empty())
+			{
+				std::cerr << "ERROR: doubled parameter " << arg << "." << std::endl;
+				return std::nullopt;
+			}
+
 			if (i == argc - 1 || argc < 3)
 			{
 				std::cerr << "ERROR: " << arg << " parameter requires an input file." << std::endl;
@@ -417,6 +508,12 @@ std::optional<std::map<std::string, std::string>> parse_args(int argc, char** ar
 
 		if (arg == "-D" || arg == "--dictionary")
 		{
+			if (!args["dictionary"].empty())
+			{
+				std::cerr << "ERROR: doubled parameter " << arg << "." << std::endl;
+				return std::nullopt;
+			}
+
 			if (i == argc - 1 || argc < 3)
 			{
 				std::cerr << "ERROR: " << arg << " parameter requires a dictionary file." << std::endl;
@@ -429,6 +526,12 @@ std::optional<std::map<std::string, std::string>> parse_args(int argc, char** ar
 
 		if (arg == "-MT")
 		{
+			if (!args["parallel"].empty())
+			{
+				std::cerr << "ERROR: doubled parameter " << arg << "." << std::endl;
+				return std::nullopt;
+			}
+
 			args["parallel"] = "parallel";
 			continue;
 		}
