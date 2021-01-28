@@ -1,6 +1,7 @@
 /*
 	SHA-1 Brute force
 	implemented bruteforce, salt, dictionary, console writes and multithreading
+	SHA-1 implemetation from https://github.com/vog/sha1
 */
 
 #include "sha1/sha1.hpp"
